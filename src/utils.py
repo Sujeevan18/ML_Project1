@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import dill
 from sklearn.metrics import r2_score
+from sklearn.model_selection import GridSearchCV
 
 from src.exception import CustomException
 
@@ -18,22 +19,25 @@ def save_object(file_path, obj):
     except Exception as e:
         raise CustomException(e, sys)
     
-def evaluate_models(X_train, y_train, X_test, y_test, models):
+def evaluate_models(X_train, y_train, X_test, y_test, models, param):
     try:
         report = {}
 
-        for i in range(len(list(models))):
-            model = list(models.values())[i]
+        for model_name, model in models.items():
+            grid = param.get(model_name, {})          # <- safe lookup
+            if grid:                                  # if we have hyper-params
+                gs = GridSearchCV(model, grid, cv=3,
+                                  n_jobs=-1, verbose=1, refit=True)
+                gs.fit(X_train, y_train)
+                best_model = gs.best_estimator_
+            else:                                     # no hyper-params
+                best_model = model
+                best_model.fit(X_train, y_train)
 
-            model.fit(X_train, y_train)
+            y_train_pred = best_model.predict(X_train)
+            y_test_pred  = best_model.predict(X_test)
 
-            y_train_pred = model.predict(X_train)
-            y_test_pred = model.predict(X_test)
-
-            train_model_score = r2_score(y_train, y_train_pred)
-            test_model_score = r2_score(y_test, y_test_pred)
-
-            report[list(models.keys())[i]] = test_model_score
+            report[model_name] = r2_score(y_test, y_test_pred)
 
         return report
 
